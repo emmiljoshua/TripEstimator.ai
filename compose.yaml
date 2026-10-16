@@ -1,0 +1,21 @@
+services:
+  trips-api:
+    environment:
+      DATABASE_URL: postgres://trips_user:trips_password@db:5432/trips_db?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    build: .
+    ports:
+      - "8080:8080"
+    
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: trips_user
+      POSTGRES_PASSWORD: trips_password
+      POSTGRES_DB: trips_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U trips_user -d trips_db"]
+      interval: 2s
+      retries: 10

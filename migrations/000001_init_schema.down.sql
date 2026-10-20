@@ -1,2 +1,6 @@
+DROP TABLE IF EXISTS estimates;
+DROP TABLE IF EXISTS fx_rates;
+DROP TABLE IF EXISTS expenses;
+DROP TABLE IF EXISTS categories;
 DROP TABLE IF EXISTS trip_segments;
 DROP TABLE IF EXISTS trips;

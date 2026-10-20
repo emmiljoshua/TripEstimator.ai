@@ -19,3 +19,5 @@ services:
       test: ["CMD-SHELL", "pg_isready -h localhost -U trips_user -d trips_db"]
       interval: 2s
       retries: 10
+    ports:
+      - "5432:5432"

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS trip_segments;
+DROP TABLE IF EXISTS trips;

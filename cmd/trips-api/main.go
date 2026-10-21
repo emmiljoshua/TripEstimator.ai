@@ -13,10 +13,22 @@ type healthResponse struct {
 	Status string `json:"status"`
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(healthResponse{Status: "ok"})
+type server struct {
+	pool *pgxpool.Pool
+}
+
+func (s *server) healthHandler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+
+    _, err := s.pool.Exec(r.Context(), "SELECT 1")
+    if err != nil {
+        w.WriteHeader(http.StatusServiceUnavailable)
+        json.NewEncoder(w).Encode(healthResponse{Status: "db unavailable"})
+        return
+    }
+
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(healthResponse{Status: "ok"})
 }
 
 func main() {
@@ -37,7 +49,9 @@ func main() {
 	log.Println("db connected")
 	defer pool.Close()
 
+	srv := &server{pool: pool}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", handler)
+	mux.HandleFunc("GET /health", srv.healthHandler)
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }

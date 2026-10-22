@@ -33,8 +33,12 @@ func (s *server) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	dbUrl := os.Getenv("DATABASE_URL")
+	port := os.Getenv("PORT")
 	if dbUrl == "" {
 		log.Fatal("DATABASE_URL environment variable is not set")
+	}
+	if port == "" {
+		port = "8080" // default port
 	}
 
 	pool, err := pgxpool.New(context.Background(), dbUrl)
@@ -53,5 +57,5 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", srv.healthHandler)
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Fatal(http.ListenAndServe(":" + port, mux))
 }

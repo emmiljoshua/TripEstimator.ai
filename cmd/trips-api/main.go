@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"errors"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type healthResponse struct {
@@ -33,6 +34,19 @@ type tripResponse struct {
 	PartySize   int    `json:"party_size"`
 	OriginCity  string `json:"origin_city"`
 	OriginCountry string `json:"origin_country"`
+}
+
+type createSegmentRequest struct {
+	City  string `json:"city_stayed"`
+	Country string `json:"country_stayed"`
+	StartDate   string `json:"start_date"`
+	EndDate     string `json:"end_date"`
+}
+
+type createSegmentResponse struct {
+	ID int64 `json:"id"`
+	TripID int64 `json:"trip_id"`
+	Nights int `json:"nights"`
 }
 
 type createTripResponse struct {
@@ -95,6 +109,44 @@ func (s *server) getTrip(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(t)
 }
 
+func (s *server) createSegment(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	tripID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+    	return
+	}
+
+	var req createSegmentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	var segmentID int64
+	var nights int
+	err = s.pool.QueryRow(r.Context(),
+		`INSERT INTO trip_segments (trip_id, city_stayed, country_stayed, start_date, end_date) VALUES ($1, $2, $3, $4, $5) RETURNING id, nights`,
+		tripID, req.City, req.Country, req.StartDate, req.EndDate,
+	).Scan(&segmentID, &nights)
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		http.Error(w, "trip not found", http.StatusNotFound)
+    	return
+	}
+	
+	if err != nil {
+		log.Println("Error inserting segment:", err)
+		http.Error(w, "Could not create segment", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(createSegmentResponse{ID: segmentID, TripID: tripID, Nights: nights})
+}
+
 func (s *server) healthHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
 
@@ -137,5 +189,6 @@ func main() {
 	mux.HandleFunc("GET /health", srv.healthHandler)
 	mux.HandleFunc("POST /trips", srv.createTrip)
 	mux.HandleFunc("GET /trips/{id}", srv.getTrip)
+	mux.HandleFunc("POST /trips/{id}/segments", srv.createSegment)
 	log.Fatal(http.ListenAndServe(":" + port, mux))
 }

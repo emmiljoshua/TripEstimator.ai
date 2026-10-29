@@ -24,5 +24,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /trips/{id}", s.getTrip)
 	mux.HandleFunc("POST /trips/{id}/segments", s.createSegment)
 	mux.HandleFunc("POST /segments/{id}/expenses", s.createExpense)
+	mux.HandleFunc("GET /rates", s.getRates)
 	return mux
 }

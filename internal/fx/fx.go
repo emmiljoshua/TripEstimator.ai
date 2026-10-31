@@ -20,11 +20,14 @@ type frankfurterResponse struct {
 // Frankfurter from hanging our request forever.
 var httpClient = &http.Client{Timeout: 5 * time.Second}
 
+// baseURL is where Frankfurter lives. Tests swap it for a fake server's address.
+var baseURL = "https://api.frankfurter.dev/v1/"
+
 // FetchUSDRate returns how many US dollars one unit of currency was worth
 // on date (YYYY-MM-DD), as exact text like "0.0064704".
 func FetchUSDRate(ctx context.Context, currency, date string) (string, error) {
 	q := url.Values{"base": {currency}, "symbols": {"USD"}}
-	endpoint := "https://api.frankfurter.dev/v1/" + url.PathEscape(date) + "?" + q.Encode()
+	endpoint := baseURL + url.PathEscape(date) + "?" + q.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

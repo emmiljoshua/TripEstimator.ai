@@ -4,6 +4,7 @@ package fx
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,6 +16,10 @@ import (
 type frankfurterResponse struct {
 	Rates map[string]json.Number `json:"rates"`
 }
+
+// ErrNoRate means Frankfurter has no rate for that currency on that date
+// (it answers 404): usually an unknown currency code.
+var ErrNoRate = errors.New("no exchange rate available")
 
 // httpClient is shared by all outbound calls. The timeout stops a slow
 // Frankfurter from hanging our request forever.
@@ -38,6 +43,10 @@ func FetchUSDRate(ctx context.Context, currency, date string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", ErrNoRate
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("frankfurter returned status %d", resp.StatusCode)

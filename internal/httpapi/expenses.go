@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 )
 
 type createExpenseRequest struct {
@@ -31,13 +33,41 @@ func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	segmentID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 
 	var req createExpenseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	if req.Category == "" {
+		writeError(w, http.StatusBadRequest, "category is required")
+		return
+	}
+	amt, err := req.Amount.Float64()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "amount must be a valid number")
+		return
+	}
+	if amt <= 0 {
+		writeError(w, http.StatusBadRequest, "amount must be greater than 0")
+		return
+	}
+	req.Currency = strings.ToUpper(req.Currency) // "jpy" becomes "JPY"
+	if len(req.Currency) != 3 {
+		writeError(w, http.StatusBadRequest, "currency must be a 3-letter code like JPY")
+		return
+	}
+	spent, err := time.Parse("2006-01-02", req.SpentOn)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "spent_on must be a valid date in YYYY-MM-DD format")
+		return
+	}
+	if spent.After(time.Now()) {
+		writeError(w, http.StatusBadRequest, "spent_on cannot be in the future")
 		return
 	}
 
@@ -47,7 +77,7 @@ func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
 		rate, err = fx.FetchUSDRate(r.Context(), req.Currency, req.SpentOn)
 		if err != nil {
 			log.Println("Error fetching rate:", err)
-			http.Error(w, "could not get exchange rate", http.StatusBadGateway)
+			writeError(w, http.StatusBadGateway, "could not get exchange rate")
 			return
 		}
 	}
@@ -56,7 +86,7 @@ func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
 		log.Println("Error starting transaction:", err)
-		http.Error(w, "could not create expense", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not create expense")
 		return
 	}
 	// Safety net: undo everything if we return early. Does nothing after Commit.
@@ -72,7 +102,7 @@ func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Println("Error saving rate:", err)
-		http.Error(w, "could not create expense", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not create expense")
 		return
 	}
 
@@ -92,31 +122,29 @@ func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
 	if errors.As(err, &pgErr) {
 		// 23503 = foreign key violation: no segment with that id.
 		if pgErr.Code == "23503" {
-			http.Error(w, "segment not found", http.StatusNotFound)
+			writeError(w, http.StatusNotFound, "segment not found")
 			return
 		}
 		// 23502 = NOT NULL violation. On category_id, it means the name lookup found nothing.
 		if pgErr.Code == "23502" && pgErr.ColumnName == "category_id" {
-			http.Error(w, "unknown category", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "unknown category")
 			return
 		}
 	}
 	if err != nil {
 		log.Println("Error inserting expense:", err)
-		http.Error(w, "could not create expense", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not create expense")
 		return
 	}
 
 	// Make it permanent. Until this line, the rate and the expense aren't visible to anyone else.
 	if err := tx.Commit(r.Context()); err != nil {
 		log.Println("Error committing:", err)
-		http.Error(w, "could not create expense", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not create expense")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createExpenseResponse{
+	writeJSON(w, http.StatusCreated, createExpenseResponse{
 		ID:        expenseID,
 		AmountUSD: json.Number(amountUSD),
 		Rate:      json.Number(rate),

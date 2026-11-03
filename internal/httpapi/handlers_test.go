@@ -24,6 +24,14 @@ func TestBadInputs(t *testing.T) {
 		{"bad JSON for expense", "POST", "/segments/1/expenses", "{", http.StatusBadRequest},
 		{"post health", "POST", "/health", "", http.StatusMethodNotAllowed},
 		{"get nope", "GET", "/nope", "", http.StatusNotFound},
+		{"trip missing name", "POST", "/trips", `{"start_date":"2026-10-01","end_date":"2026-10-12","party_size":2,"origin_city":"Austin","origin_country":"US"}`, http.StatusBadRequest},
+		{"trip bad date", "POST", "/trips", `{"trip_name":"T","start_date":"2026-13-01","end_date":"2026-10-12","party_size":2,"origin_city":"Austin","origin_country":"US"}`, http.StatusBadRequest},
+		{"trip end before start", "POST", "/trips", `{"trip_name":"T","start_date":"2026-10-12","end_date":"2026-10-01","party_size":2,"origin_city":"Austin","origin_country":"US"}`, http.StatusBadRequest},
+		{"trip party of zero", "POST", "/trips", `{"trip_name":"T","start_date":"2026-10-01","end_date":"2026-10-12","party_size":0,"origin_city":"Austin","origin_country":"US"}`, http.StatusBadRequest},
+		{"segment missing city", "POST", "/trips/1/segments", `{"start_date":"2026-10-01","end_date":"2026-10-05"}`, http.StatusBadRequest},
+		{"expense negative amount", "POST", "/segments/1/expenses", `{"category":"food","amount":-5,"currency":"USD","spent_on":"2026-10-01"}`, http.StatusBadRequest},
+		{"expense bad currency", "POST", "/segments/1/expenses", `{"category":"food","amount":5,"currency":"US","spent_on":"2026-10-01"}`, http.StatusBadRequest},
+		{"expense future date", "POST", "/segments/1/expenses", `{"category":"food","amount":5,"currency":"USD","spent_on":"2099-01-01"}`, http.StatusBadRequest},
 	}
 
 	h := NewServer(nil).Routes() // nil pool is fine, we won't hit the database

@@ -44,7 +44,7 @@ func (s *Server) getRates(w http.ResponseWriter, r *http.Request) {
 		ORDER BY city_stayed, category`)
 	if err != nil {
 		log.Println("Error fetching rates:", err)
-		http.Error(w, "could not fetch rates", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not fetch rates")
 		return
 	}
 	defer rows.Close()
@@ -55,7 +55,7 @@ func (s *Server) getRates(w http.ResponseWriter, r *http.Request) {
 		var value string // the rate as exact text, like "283.21"
 		if err := rows.Scan(&rate.City, &rate.Country, &rate.Category, &rate.Unit, &value); err != nil {
 			log.Println("Error reading rate:", err)
-			http.Error(w, "could not fetch rates", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "could not fetch rates")
 			return
 		}
 		rate.RateUSD = json.Number(value)
@@ -63,11 +63,9 @@ func (s *Server) getRates(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := rows.Err(); err != nil {
 		log.Println("Error iterating rates:", err)
-		http.Error(w, "could not fetch rates", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not fetch rates")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(rates)
+	writeJSON(w, http.StatusOK, rates)
 }

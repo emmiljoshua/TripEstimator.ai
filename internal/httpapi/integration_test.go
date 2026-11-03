@@ -86,7 +86,7 @@ func TestTripEndToEnd(t *testing.T) {
 
 	// 1. Create the trip.
 	rec := do(t, h, "POST", "/trips", createTripRequest{
-		TripName: "Test Europe", StartDate: "2026-11-15", EndDate: "2026-11-26",
+		TripName: "Test Europe", StartDate: "2026-10-01", EndDate: "2026-10-12",
 		PartySize: 2, OriginCity: "Austin", OriginCountry: "US",
 	})
 	if rec.Code != http.StatusCreated {
@@ -96,16 +96,16 @@ func TestTripEndToEnd(t *testing.T) {
 	decode(t, rec, &trip)
 
 	// 2-3. Add Munich and Vienna.
-	munich := addSegment(t, h, trip.ID, "Munich", "DE", "2026-11-15", "2026-11-19")
-	vienna := addSegment(t, h, trip.ID, "Vienna", "AT", "2026-11-22", "2026-11-26")
+	munich := addSegment(t, h, trip.ID, "Munich", "DE", "2026-10-01", "2026-10-05")
+	vienna := addSegment(t, h, trip.ID, "Vienna", "AT", "2026-10-08", "2026-10-12")
 	if munich.Nights != 4 || vienna.Nights != 4 {
 		t.Errorf("nights = %d and %d, want 4 and 4", munich.Nights, vienna.Nights)
 	}
 
 	// 4-6. Log expenses in USD.
-	addExpense(t, h, munich.ID, "lodging", "800", "2026-11-15")
-	addExpense(t, h, munich.ID, "food", "120", "2026-11-15")
-	addExpense(t, h, vienna.ID, "lodging", "600", "2026-11-22")
+	addExpense(t, h, munich.ID, "lodging", "800", "2026-10-01")
+	addExpense(t, h, munich.ID, "food", "120", "2026-10-01")
+	addExpense(t, h, vienna.ID, "lodging", "600", "2026-10-08")
 
 	// 7. The trip comes back with each city's total.
 	rec = do(t, h, "GET", fmt.Sprintf("/trips/%d", trip.ID), nil)
@@ -181,5 +181,28 @@ func addExpense(t *testing.T, h http.Handler, segmentID int64, category, amount,
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("add %s expense: status = %d, body = %s", category, rec.Code, rec.Body)
+	}
+}
+
+// TestSegmentOutsideTrip checks that a segment starting before its trip is rejected.
+func TestSegmentOutsideTrip(t *testing.T) {
+	h := newTestServer(t)
+
+	rec := do(t, h, "POST", "/trips", createTripRequest{
+		TripName: "Range check", StartDate: "2026-10-01", EndDate: "2026-10-12",
+		PartySize: 2, OriginCity: "Austin", OriginCountry: "US",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create trip: status = %d, body = %s", rec.Code, rec.Body)
+	}
+	var trip createTripResponse
+	decode(t, rec, &trip)
+
+	// Starts Sept 30, one day before the trip begins.
+	rec = do(t, h, "POST", fmt.Sprintf("/trips/%d/segments", trip.ID), createSegmentRequest{
+		City: "Munich", Country: "DE", StartDate: "2026-09-30", EndDate: "2026-10-03",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body = %s", rec.Code, rec.Body)
 	}
 }

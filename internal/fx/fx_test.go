@@ -57,6 +57,25 @@ func TestFetchUSDRate_Non200(t *testing.T) {
 	}
 }
 
+func TestFetchUSDRate_404IsErrNoRate(t *testing.T) {
+	// Create a fake server to simulate Frankfurter's non-200 response.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer server.Close()
+
+	// Swap the baseURL to point to the fake server.
+	originalBaseURL := baseURL
+	baseURL = server.URL + "/"
+	defer func() { baseURL = originalBaseURL }()
+
+	_, err := FetchUSDRate(context.Background(), "JPY", "2026-09-14")
+	if err != ErrNoRate {
+		t.Fatalf("expected error %v, got %v", ErrNoRate, err)
+	}
+}
+
 func TestFetchUSDRate_NoUSD(t *testing.T) {
 	// Create a fake server to simulate Frankfurter's response without USD.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

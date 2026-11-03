@@ -55,7 +55,41 @@ type segmentResponse struct {
 func (s *Server) createTrip(w http.ResponseWriter, r *http.Request) {
 	var req createTripRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	// Validate the request fields before processing.
+	if req.TripName == "" {
+		writeError(w, http.StatusBadRequest, "trip_name is required")
+		return
+	}
+	if _, err := parseDate(req.StartDate); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid start_date")
+		return
+	}
+	if _, err := parseDate(req.EndDate); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid end_date")
+		return
+	}
+	endDate, _ := parseDate(req.EndDate)
+	startDate, _ := parseDate(req.StartDate)
+	if endDate.Before(startDate) {
+		writeError(w, http.StatusBadRequest, "end_date must be after start_date")
+		return
+	}
+
+	if req.PartySize < 1 {
+		writeError(w, http.StatusBadRequest, "party_size must be at least 1")
+		return
+	}
+
+	if req.OriginCity == "" {
+		writeError(w, http.StatusBadRequest, "origin_city is required")
+		return
+	}
+	if req.OriginCountry == "" {
+		writeError(w, http.StatusBadRequest, "origin_country is required")
 		return
 	}
 
@@ -68,13 +102,11 @@ func (s *Server) createTrip(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Println("Error inserting trip:", err)
-		http.Error(w, "Could not create trip", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "Could not create trip")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createTripResponse{ID: id})
+	writeJSON(w, http.StatusCreated, createTripResponse{ID: id})
 }
 
 // getTrip handles GET /trips/{id}.
@@ -84,7 +116,7 @@ func (s *Server) getTrip(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 
@@ -94,11 +126,11 @@ func (s *Server) getTrip(w http.ResponseWriter, r *http.Request) {
 		id,
 	).Scan(&t.ID, &t.TripName, &t.StartDate, &t.EndDate, &t.PartySize, &t.OriginCity, &t.OriginCountry)
 	if errors.Is(err, pgx.ErrNoRows) {
-		http.Error(w, "trip not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "trip not found")
 		return
 	} else if err != nil {
 		log.Println("Error fetching trip:", err)
-		http.Error(w, "could not fetch trip", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not fetch trip")
 		return
 	}
 
@@ -116,7 +148,7 @@ func (s *Server) getTrip(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Println("Error fetching segments:", err)
-		http.Error(w, "could not fetch trip", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not fetch trip")
 		return
 	}
 	defer rows.Close() // release the connection when we're done reading
@@ -128,7 +160,7 @@ func (s *Server) getTrip(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&seg.ID, &seg.CityStayed, &seg.CountryStayed,
 			&seg.StartDate, &seg.EndDate, &seg.Nights, &total); err != nil {
 			log.Println("Error reading segment:", err)
-			http.Error(w, "could not fetch trip", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "could not fetch trip")
 			return
 		}
 		seg.TotalUSD = json.Number(total)
@@ -137,7 +169,7 @@ func (s *Server) getTrip(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := rows.Err(); err != nil { // catches errors that happened mid-loop
 		log.Println("Error iterating segments:", err)
-		http.Error(w, "could not fetch trip", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not fetch trip")
 		return
 	}
 
@@ -161,7 +193,7 @@ func (s *Server) getTrip(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Println("Error fetching category totals:", err)
-		http.Error(w, "could not fetch trip", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not fetch trip")
 		return
 	}
 	defer catRows.Close()
@@ -172,7 +204,7 @@ func (s *Server) getTrip(w http.ResponseWriter, r *http.Request) {
 		var total string
 		if err := catRows.Scan(&segID, &ct.Category, &total); err != nil {
 			log.Println("Error reading category total:", err)
-			http.Error(w, "could not fetch trip", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "could not fetch trip")
 			return
 		}
 		ct.TotalUSD = json.Number(total)
@@ -181,11 +213,9 @@ func (s *Server) getTrip(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := catRows.Err(); err != nil {
 		log.Println("Error iterating category totals:", err)
-		http.Error(w, "could not fetch trip", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "could not fetch trip")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(t)
+	writeJSON(w, http.StatusOK, t)
 }
